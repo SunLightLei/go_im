@@ -3,25 +3,71 @@ package main
 import (
 	"fmt"
 	"net"
+	"sync"
 )
 
-// 声明Server
+// 定义Server
 type Server struct {
 	Ip   string
 	Port int
+
+	// 在线用户列表
+	OnlineMap map[string]*User
+	mapLock   sync.RWMutex
+
+	// 消息广播的channel
+	message chan string
 }
 
 // 创建一个server,传入ip和port,返回*Server
 func NewServer(ip string, port int) *Server {
 	server := &Server{
-		Ip:   ip,
-		Port: port,
+		Ip:        ip,
+		Port:      port,
+		OnlineMap: make(map[string]*User),
+		message:   make(chan string),
 	}
 	return server
 }
 
+// 监听message广播消息 channel的goroutine，有消息就发送给所有在线的用户
+func (this *Server) ListenMessager() {
+	for {
+		msg := <-this.message
+
+		//将msg发送给所有在线的用户
+		this.mapLock.Lock()
+		// cli表示用户，
+		for _, cli := range this.OnlineMap {
+			// 将msg 写进用户的channel里
+			cli.C <- msg
+		}
+		this.mapLock.Unlock()
+	}
+}
+
+// 广播消息方法
+func (this *Server) BroadCast(user *User, msg string) {
+	// 定义广播消息内容和格式
+	sendMsg := "[" + user.Addr + "]" + user.Name + ":" + msg
+	// 将广播消息传给 message(这是个channel)
+	this.message <- sendMsg
+}
+
 func (this *Server) Handler(conn net.Conn) {
-	fmt.Println("连接成功。。")
+	//fmt.Println("连接成功。。")
+	user := NewUser(conn)
+
+	//用户上线，将该用户加入OnlineMap中
+	this.mapLock.Lock()
+	this.OnlineMap[user.Name] = user
+	this.mapLock.Unlock()
+
+	// 广播当前用户上线的消息
+	this.BroadCast(user, "已上线。。")
+
+	// 当前handler阻塞
+	select {}
 }
 
 // 启动服务器
@@ -34,6 +80,9 @@ func (this *Server) Start() {
 	}
 	// close socket listen
 	defer listener.Close()
+
+	// 启动监听message的 goroutine
+	go this.ListenMessager()
 
 	for {
 		// accept
