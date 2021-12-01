@@ -3,7 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"net"
+	"os"
 )
 
 type Client struct {
@@ -12,6 +14,7 @@ type Client struct {
 	Name       string
 	conn       net.Conn
 	flag       int //记录用户选择的聊天模式
+
 }
 
 func NewClient(serverIp string, serverPort int) *Client {
@@ -35,6 +38,12 @@ func NewClient(serverIp string, serverPort int) *Client {
 	return client
 }
 
+// 处理server返回的消息
+func (client *Client) DealResponse() {
+	io.Copy(os.Stdout, client.conn)
+
+}
+
 // 菜单
 func (client *Client) menu() bool {
 	var flag int
@@ -55,6 +64,85 @@ func (client *Client) menu() bool {
 	}
 }
 
+// 修改用户名
+func (client *Client) UpdateName() bool {
+	fmt.Println("=====请输入用户名：")
+	fmt.Scanln(&client.Name)
+
+	sendMsg := "rename|" + client.Name + "\n"
+	_, err := client.conn.Write([]byte(sendMsg))
+	if err != nil {
+		fmt.Println("conn.Write err: ", err)
+		return false
+	}
+	return true
+}
+
+// 群聊
+func (client *Client) PublicChat() {
+	// 提示用户输入要发送的消息
+	var chatMsg string
+	fmt.Println("=====请输入消息内容，exit退出。")
+	fmt.Scanln(&chatMsg)
+
+	for chatMsg != "exit" {
+		// 发送给服务器
+		if len(chatMsg) != 0 {
+			sendMsg := chatMsg + "\n"
+			_, err := client.conn.Write([]byte(sendMsg))
+			if err != nil {
+				fmt.Println("conn Write err: ", err)
+				break
+			}
+		}
+		chatMsg = ""
+		fmt.Println("=====请输入消息内容，exit退出。")
+		fmt.Scanln(&chatMsg)
+	}
+}
+
+// 查询在线用户
+func (client *Client) SelectUser() {
+	sendMsg := "who\n"
+	_, err := client.conn.Write([]byte(sendMsg))
+	if err != nil {
+		fmt.Println("conn Write err: ", err)
+		return
+	}
+}
+
+// 私聊
+func (client *Client) PrivateChat() {
+	var remoteName string
+	var chatMsg string
+	client.SelectUser()
+	fmt.Println("=====请输入消息内容，exit退出。")
+	fmt.Scanln(&remoteName)
+
+	for remoteName != "exit" {
+		fmt.Println("=====请输入消息内容，exit退出。")
+		fmt.Scanln(&chatMsg)
+
+		for chatMsg != "exit" {
+			if len(chatMsg) != 0 {
+				//sendMsg := chatMsg + "\n"
+				sendMsg := "to|" + remoteName + "|" + chatMsg + "\n\n"
+				_, err := client.conn.Write([]byte(sendMsg))
+				if err != nil {
+					fmt.Println("conn Write err: ", err)
+					break
+				}
+			}
+			chatMsg = ""
+			fmt.Println("=====请输入消息内容，exit退出。")
+			fmt.Scanln(&chatMsg)
+		}
+		client.SelectUser()
+		fmt.Println("=====请输入消息内容，exit退出。")
+		fmt.Scanln(&remoteName)
+	}
+}
+
 func (client *Client) Run() {
 	for client.flag != 0 {
 		for client.menu() != true {
@@ -66,14 +154,17 @@ func (client *Client) Run() {
 		case 1:
 			// 公聊模式
 			fmt.Println("您选择的是公聊模式。。。")
+			client.PublicChat()
 			break
 		case 2:
 			// 私聊模式
 			fmt.Println("您选择的是私聊模式。。。")
+			client.PrivateChat()
 			break
 		case 3:
 			// 重命名
 			fmt.Println("您选择的是重命名模式。。。")
+			client.UpdateName()
 			break
 		}
 	}
@@ -98,6 +189,9 @@ func main() {
 		fmt.Println("连接服务器失败......")
 		return
 	}
+
+	// 单独开启一个goroutine 去处理server的返回消息
+	go client.DealResponse()
 
 	fmt.Println("连接服务器成功......")
 
