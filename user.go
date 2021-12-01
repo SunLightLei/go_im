@@ -34,24 +34,39 @@ func (this *User) Online() {
 	this.server.OnlineMap[this.Name] = this
 	this.server.mapLock.Unlock()
 
-	// 广播当前用户上线
+	// 广播当前用户上线的消息
 	this.server.BroadCast(this, "已上线！！")
 }
 
 // 用户下线
 func (this *User) Offline() {
-	// 用户下线，将用户从onlineMap中去掉
+	// 用户上线，将用户加入到onlineMap中
 	this.server.mapLock.Lock()
 	delete(this.server.OnlineMap, this.Name)
 	this.server.mapLock.Unlock()
 
-	// 广播当前用户下线消息
+	// 广播当前用户上线的消息
 	this.server.BroadCast(this, "已下线。。")
 }
 
-// 用户处理消息
+// 给当前user对应的客户端发送消息
+func (this *User) SendMsg(msg string) {
+	this.conn.Write([]byte(msg))
+}
+
+// 用户处理消息的业务
 func (this *User) DoMessage(msg string) {
-	this.server.BroadCast(this, msg)
+	if msg == "who" {
+		// 查询当前在线用户
+		this.server.mapLock.Lock()
+		for _, user := range this.server.OnlineMap {
+			onlineMsg := "[" + user.Addr + "]" + user.Name + ":" + "在线。。。\n"
+			this.SendMsg(onlineMsg)
+		}
+		this.server.mapLock.Unlock()
+	} else {
+		this.server.BroadCast(this, msg)
+	}
 }
 
 // 监听用户的channel，有消息会发送给对方客户端

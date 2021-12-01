@@ -89,7 +89,10 @@ func (this *Server) Handler(conn net.Conn) {
 			msg := string(buf[:n-1])
 
 			// 将得到的msg进行广播
-			this.BroadCast(user, msg)
+			//this.BroadCast(user, msg)
+
+			// 用户针对msg进行消息处理
+			user.DoMessage(msg)
 		}
 	}()
 
