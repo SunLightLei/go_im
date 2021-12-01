@@ -102,5 +102,5 @@ func main() {
 	fmt.Println("连接服务器成功......")
 
 	// 启动客户端业务
-	select {}
+	client.Run()
 }
